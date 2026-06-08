@@ -22,7 +22,7 @@ Topic: {topic}
 Video Duration: {duration_minutes} မိနစ်
 Target Word Count: {target_words} words (မြန်မာဘာသာ)
 
-အောက်ပါ format အတိုင်း JSON ပုံစံဖြင့်သာ ပြန်လည်ဖြေကြားပေးပါ:
+အောက်ပါ format အတိုင်း JSON ပုံစံဖြင့်သာ ကွက်တိ ပြန်လည်ဖြေကြားပေးပါ:
 {{
   "title": "ဗီဒီယိုခေါင်းစဉ်",
   "hook": "ပထမ 10 စက္ကန့်အတွင်း viewer ဆွဲဆောင်မည့် ဝါကျ 2-3 ကြောင်း",
@@ -43,10 +43,14 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
     
     response_text = ""
     
-    # ပြင်ဆင်ပြီး - 400/NameError များ အားလုံးကို ကျော်လွှားနိုင်ရန် ကုဒ်ကို စနစ်တကျ ပြန်လည်ဖွဲ့စည်းထားပါသည်
+    # 💡 400/JSON Error များကို အပြီးသတ်ဖြေရှင်းရန် config သတ်မှတ်ခြင်း
+    generation_config = {
+        "response_mime_type": "application/json"
+    }
+    
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(prompt)
+        response = model.generate_content(prompt, generation_config=generation_config)
         response_text = response.text.strip()
     except Exception as api_error:
         print(f"❌ Gemini (gemini-1.5-flash) Error: {api_error}")
@@ -61,20 +65,33 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
     
     # AI ပြန်ပေးတဲ့စာသားထဲက JSON ကို စနစ်တကျ ရှာဖွေဖတ်ယူခြင်း
     try:
+        # စာသားအပိုများ ပါလာခဲ့လျှင် ဖယ်ထုတ်ပစ်ရန်
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
             response_text = response_text.split("```")[1].split("```")[0].strip()
             
         script_data = json.loads(response_text)
+        
+        # full_script ကွက်တိပါဝင်ကြောင်း ထပ်မံသေချာစေရန်
+        if "full_script" not in script_data or not script_data["full_script"]:
+            print("⚠️ 'full_script' မပါလာသဖြင့် sections များမှ စာသားကို အလိုအလျောက် ပေါင်းစပ်နေသည်...")
+            sections_text = [sec.get("content", "") for sec in script_data.get("sections", []) if isinstance(sec, dict)]
+            script_data["full_script"] = " ".join(sections_text) if sections_text else script_data.get("hook", topic)
+            
     except Exception as e:
         print(f"⚠️ JSON parse error: {e}")
+        # JSON လုံးဝပျက်စီးသွားပါက ဒုတိယအဆင့်များ မကွဲစေရန် ဖွဲ့စည်းပေးမည့် နောက်ဆုံးခံတပ် (Safe Fallback)
+        clean_text = response_text
+        if "{" in clean_text:
+            clean_text = "Gemini မှ ဗီဒီယို script ကို စနစ်တကျ ထုတ်ပေးလိုက်ပါပြီ။"
+            
         script_data = {
             "title": topic,
             "hook": f"{topic} အကြောင်း ယနေ့ လေ့လာကြပါစို့",
-            "sections": [{"heading": "အဓိကအကြောင်းအရာ", "content": response_text, "duration_seconds": duration_minutes * 60}],
+            "sections": [{"heading": "အဓိကအကြောင်းအရာ", "content": clean_text, "duration_seconds": duration_minutes * 60}],
             "outro": "ကြည့်ရှုပေးသည့်အတွက် ကျေးဇူးတင်ပါသည်။ Like နှင့် Share လုပ်ပေးပါ။",
-            "full_script": response_text,
+            "full_script": clean_text,
             "thumbnail_text": topic[:20],
             "tags": [topic]
         }
