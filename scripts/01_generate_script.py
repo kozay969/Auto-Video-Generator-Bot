@@ -18,7 +18,7 @@ Topic: {topic}
 Video Duration: {duration_minutes} မိနစ်
 Target Word Count: {target_words} words (မြန်မာဘာသာ)
 
-အောက်ပါ format ဖြင့် JSON သာ return ပေးပါ (markdown ```json ... ``` မလိုပါ၊ pure JSON သာ ဖြစ်ရမည်):
+အောက်ပါ format ဖြင့် JSON သာ return ပေးပါ (markdown ```json ... ``` မလိုပါ optical pure JSON သာ ဖြစ်ရမည်):
 {{
   "title": "ဗီဒီယိုခေါင်းစဉ်",
   "hook": "ပထမ 10 စက္ကန့်အတွင်း viewer ဆွဲဆောင်မည့် ဝါကျ 2-3 ကြောင်း",
@@ -37,13 +37,12 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
 
     print(f"🤖 Google Gemini API သို့ script တောင်းဆိုနေသည်... (topic: {topic})")
     
-    # Gemini 1.5 Flash Model ကို သုံးထားသဖြင့် မြန်ဆန်ပြီး Free ရပါသည်
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # ပြင်ဆင်ပြီး - 404 Error မတက်စေရန် Model အမည်ကို ပြည့်စုံစွာ ပြောင်းလဲထားပါသည်
+    model = genai.GenerativeModel('models/gemini-1.5-flash-latest')
     response = model.generate_content(prompt)
     response_text = response.text.strip()
     
     try:
-        # Markdown block ပါလာပါက ဖယ်ထုတ်ရန်
         if response_text.startswith("```"):
             lines = response_text.split("\n")
             if lines[0].startswith("```json"):
