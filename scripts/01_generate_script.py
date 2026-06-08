@@ -6,8 +6,13 @@ import sys
 import google.generativeai as genai
 
 def generate_script(topic: str, duration_minutes: int) -> dict:
-    # Gemini API ကို သတ်မှတ်ခြင်း
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    # API Key ကို ပိုမိုသေချာသော စနစ်ဖြင့် ချိတ်ဆက်ခြင်း
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("❌ Error: GEMINI_API_KEY environment variable is missing!")
+        sys.exit(1)
+        
+    genai.configure(api_key=api_key)
     
     words_per_minute = 120
     target_words = words_per_minute * duration_minutes
@@ -18,7 +23,7 @@ Topic: {topic}
 Video Duration: {duration_minutes} မိနစ်
 Target Word Count: {target_words} words (မြန်မာဘာသာ)
 
-အောက်ပါ format ဖြင့် JSON သာ return ပေးပါ (markdown ```json ... ``` မလိုပါ optical pure JSON သာ ဖြစ်ရမည်):
+အောက်ပါ format ဖြင့် JSON သာ return ပေးပါ (markdown ```json ... ``` မလိုပါ၊ pure JSON သာ ဖြစ်ရမည်):
 {{
   "title": "ဗီဒီယိုခေါင်းစဉ်",
   "hook": "ပထမ 10 စက္ကန့်အတွင်း viewer ဆွဲဆောင်မည့် ဝါကျ 2-3 ကြောင်း",
@@ -37,10 +42,21 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
 
     print(f"🤖 Google Gemini API သို့ script တောင်းဆိုနေသည်... (topic: {topic})")
     
-    # ပြင်ဆင်ပြီး - 404 Error မတက်စေရန် Model အမည်ကို ပြည့်စုံစွာ ပြောင်းလဲထားပါသည်
-    model = genai.GenerativeModel('models/gemini-1.5-flash-latest')
-    response = model.generate_content(prompt)
-    response_text = response.text.strip()
+    try:
+        # ပြင်ဆင်ပြီး - 404 Error ကို ကျော်လွှားရန် အသစ်ဆုံး Model ရွေးချယ်မှု ပုံစံအတိုင်း ပြောင်းလဲထားပါသည်
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+    except Exception as api_error:
+        print(f"❌ Gemini API Call Error: {api_error}")
+        print("💡 နည်းလမ်းပြောင်းပြီး 'gemini-pro' ဖြင့် ထပ်မံကြိုးစားကြည့်နေသည်...")
+        try:
+            model = genai.GenerativeModel('gemini-pro')
+            response = model.generate_content(prompt)
+            response_text = response.text.strip()
+        except Exception as e_fallback:
+            print(f"❌ Fallback Error: {e_fallback}")
+            sys.exit(1)
     
     try:
         if response_text.startswith("```"):
@@ -56,7 +72,7 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
         script_data = {
             "title": topic,
             "hook": f"{topic} အကြောင်း ယနေ့ လေ့လာကြပါစို့",
-            "sections": [{"heading": "အဓိကအကြောင်းအရာ", "content": response_text, "duration_seconds": duration_minutes * 60}],
+            "sections": [{"heading": "အဓ比ကအကြောင်းအရာ", "content": response_text, "duration_seconds": duration_minutes * 60}],
             "outro": "ကြည့်ရှုပေးသည့်အတွက် ကျေးဇူးတင်ပါသည်။ Like နှင့် Share လုပ်ပေးပါ။",
             "full_script": response_text,
             "thumbnail_text": topic[:20],
@@ -80,3 +96,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
