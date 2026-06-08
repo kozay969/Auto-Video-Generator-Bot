@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
 """
-Step 1: Groq API သုံးပြီး Myanmar ဘာသာဖြင့် script ထုတ်မည်
+Step 1: OpenRouter API သုံးပြီး Myanmar ဘာသာဖြင့် script ထုတ်မည်
 """
 
 import argparse
 import json
 import os
 import sys
-from groq import Groq
+from openai import OpenAI
 
 def generate_script(topic: str, duration_minutes: int) -> dict:
-    """Groq API သုံးပြီး video script ထုတ်မည်"""
+    """OpenRouter API သုံးပြီး video script ထုတ်မည်"""
     
     # Words per minute for Myanmar speech (slower than English)
     words_per_minute = 120
     target_words = words_per_minute * duration_minutes
     
-    client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    client = OpenAI(
+        api_key=os.environ["OPENROUTER_API_KEY"],
+        base_url="https://openrouter.ai/api/v1"
+    )
     
     prompt = f"""သင်သည် မြန်မာဘာသာဖြင့် ဗီဒီယိုကြည့်ရှုသူများအတွက် engaging content ရေးသားသော expert တစ်ဦးဖြစ်သည်။
 
@@ -47,10 +50,10 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
 - Engaging နှင့် informative ဖြစ်ပါစေ
 - မြန်မာပြည်သူများ နားလည်လွယ်သော ဘာသာစကား သုံးပါ"""
 
-    print(f"🤖 Groq API သို့ script တောင်းဆိုနေသည်... (topic: {topic})")
+    print(f"🤖 OpenRouter API သို့ script တောင်းဆိုနေသည်... (topic: {topic})")
     
     message = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="meta-llama/llama-3.3-70b-instruct",
         max_tokens=4096,
         messages=[{"role": "user", "content": prompt}]
     )
