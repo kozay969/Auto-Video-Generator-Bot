@@ -4,7 +4,6 @@ import json
 import os
 import sys
 import google.generativeai as genai
-from google.generativeai import types
 
 def generate_script(topic: str, duration_minutes: int) -> dict:
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -12,7 +11,8 @@ def generate_script(topic: str, duration_minutes: int) -> dict:
         print("❌ Error: GEMINI_API_KEY environment variable is missing!")
         sys.exit(1)
         
-    genai.configure(api_key=api_key)
+    # ✅ 404 Error မတက်စေရန် API Version 'v1' ကို ဒီနေရာမှာ စနစ်တကျ သတ်မှတ်ထားပါတယ်
+    genai.configure(api_key=api_key, client_options={"api_version": "v1"})
     
     words_per_minute = 120
     target_words = words_per_minute * duration_minutes
@@ -42,23 +42,16 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
 
     print(f"🤖 Google Gemini API သို့ script တောင်းဆိုနေသည်... (topic: {topic})")
     
-    # 💡 404 Beta Error ကို ကျော်လွှားရန် Stable API Version (v1) သုံးဖို့ အတင်းသတ်မှတ်ခြင်း
+    # 💡 Version 'v1' အောက်မှာ စိတ်ချရဆုံးဖြစ်တဲ့ Model နာမည်အမှန်ကို ခေါ်ယူခြင်း
     try:
-        model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash',
-            generation_config={"response_mime_type": "application/json"}
-        )
-        # API Client Options ကို သုံးပြီး API Version ကို v1 သို့ ပြောင်းလဲခြင်း
-        response = model.generate_content(
-            prompt,
-            client_options={"api_version": "v1"}
-        )
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(prompt)
         response_text = response.text.strip()
     except Exception as api_error:
-        print(f"❌ Gemini (v1) API Call Error: {api_error}")
-        print("💡 နည်းလမ်းပြောင်းပြီး Beta API ဖြင့် 'models/gemini-2.5-flash' ကို ထပ်မံကြိုးစားကြည့်နေသည်...")
+        print(f"❌ Gemini (gemini-1.5-flash) Error: {api_error}")
+        print("💡 နည်းလမ်းပြောင်းပြီး 'gemini-pro' ဖြင့် ထပ်မံကြိုးစားကြည့်နေသည်...")
         try:
-            model = genai.GenerativeModel(model_name='models/gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-pro')
             response = model.generate_content(prompt)
             response_text = response.text.strip()
         except Exception as e_fallback:
