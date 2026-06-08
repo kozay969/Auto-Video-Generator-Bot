@@ -56,7 +56,7 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
         response_text = response.text.strip()
     except Exception as api_error:
         print(f"❌ Gemini (v1) API Call Error: {api_error}")
-        print("💡 နည်းလမ်းပြောင်းပြီး Beta API ဖြင့် 'models/gemini-1.5-flash' ကို ထပ်မံကြိုးစားကြည့်နေသည်...")
+        print("💡 နည်းလမ်းပြောင်းပြီး Beta API ဖြင့် 'models/gemini-2.5-flash' ကို ထပ်မံကြိုးစားကြည့်နေသည်...")
         try:
             model = genai.GenerativeModel(model_name='models/gemini-1.5-flash')
             response = model.generate_content(prompt)
