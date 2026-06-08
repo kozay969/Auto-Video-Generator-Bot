@@ -12,14 +12,12 @@ import edge_tts
 async def text_to_speech_myanmar(text: str, output_path: str) -> bool:
     """Edge-TTS သုံးပြီး မြန်မာအသံ ထုတ်လုပ်မည်"""
     try:
-        # မြန်မာအသံစနစ် ဖြစ်သော Thiha (အမျိုးသားအသံ) ကို သုံးထားပါသည်
         VOICE = "my-MM-ThihaNeural" 
         communicate = edge_tts.Communicate(text, VOICE)
         
         mp3_path = output_path.replace('.wav', '.mp3')
         await communicate.save(mp3_path)
         
-        # WAV ဖိုင်သို့ ဗီဒီယိုအတွက် အဆင်ပြေအောင် ပြန်ပြောင်းခြင်း
         subprocess.run([
             'ffmpeg', '-y',
             '-i', mp3_path,
@@ -62,7 +60,24 @@ async def main_async():
     with open("output/script_data.json", "r", encoding="utf-8") as f:
         script_data = json.load(f)
         
+    # 💡 ပြင်ဆင်ပြီး - KeyError 'full_script' မတက်စေရန် Safe-Key စနစ် သုံးထားပါသည်
     full_script = script_data.get("full_script", "")
+    
+    # အကယ်၍ full_script မပါလာပါက အခြား key များမှ စာသားကို ရှာဖွေစုစည်းပေးမည့် စနစ်
+    if not full_script:
+        print("⚠️ Warning: 'full_script' key missing! စာသားများကို အလိုအလျောက် ပြန်လည်စုစည်းနေပါသည်...")
+        if "sections" in script_data and isinstance(script_data["sections"], list):
+            sections_text = []
+            for sec in script_data["sections"]:
+                if isinstance(sec, dict) and "content" in sec:
+                    sections_text.append(sec["content"])
+            full_script = " ".join(sections_text)
+        
+        # ဒါမှမရသေးရင် တခြားရှိတဲ့ စာသားတစ်ခုခုကို ယူသုံးခြင်း
+        if not full_script:
+            full_script = script_data.get("content", script_data.get("hook", script_data.get("title", "ဗီဒီယို စတင်ပါပြီ")))
+            
+    print(f"📝 ဖတ်ကြားမည့် စာသားအရှည်: {len(full_script)} လုံး")
     
     os.makedirs("output/audio", exist_ok=True)
     chunks = split_text_into_chunks(full_script)
@@ -82,7 +97,6 @@ async def main_async():
         print("❌ ပြဿနာဖြစ်ပွား၍ အသံဖိုင် မထုတ်နိုင်ခဲ့ပါ!")
         return
         
-    # အသံဖိုင်အားလုံးကို ပြန်လည်ပေါင်းစပ်ခြင်း
     print("🔗 အသံဖိုင်များအားလုံး ပေါင်းစပ်နေသည်...")
     concat_file = "output/audio/concat_list.txt"
     with open(concat_file, "w") as f:
@@ -100,7 +114,6 @@ async def main_async():
         merged_audio
     ], check=True, capture_output=True)
     
-    # ကြာချိန်ကို စစ်ဆေးခြင်း
     result = subprocess.run([
         'ffprobe', '-v', 'quiet',
         '-print_format', 'json',
