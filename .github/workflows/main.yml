@@ -36,7 +36,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install \
             google-generativeai \
-            gtts \
+            edge-tts \
             Pillow \
             requests \
             python-telegram-bot==20.7
@@ -56,7 +56,7 @@ jobs:
             --topic "${{ github.event.inputs.topic }}" \
             --duration "${{ github.event.inputs.duration }}"
 
-      - name: 🔊 Generate Voice (gTTS Myanmar)
+      - name: 🔊 Generate Voice (Edge TTS Myanmar)
         run: |
           python scripts/02_text_to_speech.py
 
@@ -81,3 +81,4 @@ jobs:
             output/
             script.txt
           retention-days: 7
+          
