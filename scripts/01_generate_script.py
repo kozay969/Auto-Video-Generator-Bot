@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
 """
-Step 1: Gemini API သုံးပြီး Myanmar ဘာသာဖြင့် script ထုတ်မည်
+Step 1: Groq API သုံးပြီး Myanmar ဘာသာဖြင့် script ထုတ်မည်
 """
 
 import argparse
 import json
 import os
 import sys
-import time
-import google.generativeai as genai
+from groq import Groq
 
 def generate_script(topic: str, duration_minutes: int) -> dict:
-    """Gemini API သုံးပြီး video script ထုတ်မည်"""
+    """Groq API သုံးပြီး video script ထုတ်မည်"""
     
+    # Words per minute for Myanmar speech (slower than English)
     words_per_minute = 120
     target_words = words_per_minute * duration_minutes
     
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-2.0-flash-lite")
+    client = Groq(api_key=os.environ["GROQ_API_KEY"])
     
     prompt = f"""သင်သည် မြန်မာဘာသာဖြင့် ဗီဒီယိုကြည့်ရှုသူများအတွက် engaging content ရေးသားသော expert တစ်ဦးဖြစ်သည်။
 
@@ -48,37 +47,19 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
 - Engaging နှင့် informative ဖြစ်ပါစေ
 - မြန်မာပြည်သူများ နားလည်လွယ်သော ဘာသာစကား သုံးပါ"""
 
-    print(f"🤖 Gemini API သို့ script တောင်းဆိုနေသည်... (topic: {topic})")
+    print(f"🤖 Groq API သို့ script တောင်းဆိုနေသည်... (topic: {topic})")
     
-    # Retry logic for rate limiting
-    max_retries = 3
-    retry_delays = [60, 90, 120]  # seconds
-
-    for attempt in range(max_retries):
-        try:
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=4096,
-                )
-            )
-            response_text = response.text.strip()
-            break  # success
-        except Exception as e:
-            err = str(e)
-            if "429" in err or "quota" in err.lower() or "rate" in err.lower():
-                if attempt < max_retries - 1:
-                    wait = retry_delays[attempt]
-                    print(f"⚠️ Rate limit ကျနေသည်။ {wait} စက္ကန့် စောင့်ပါမည်... (attempt {attempt+1}/{max_retries})")
-                    time.sleep(wait)
-                else:
-                    print(f"❌ Retry {max_retries} ကြိမ် မအောင်မြင်ပါ။")
-                    raise
-            else:
-                raise
-
+    message = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    response_text = message.choices[0].message.content.strip()
+    
     # JSON parse
     try:
+        # Clean up if needed
         if response_text.startswith("```"):
             lines = response_text.split("\n")
             response_text = "\n".join(lines[1:-1])
@@ -86,6 +67,7 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
         script_data = json.loads(response_text)
     except json.JSONDecodeError as e:
         print(f"⚠️ JSON parse error: {e}")
+        # Fallback: use raw text as script
         script_data = {
             "title": topic,
             "hook": f"{topic} အကြောင်း ယနေ့ လေ့လာကြပါစို့",
@@ -109,6 +91,7 @@ def main():
     
     script_data = generate_script(args.topic, args.duration)
     
+    # Save script data
     os.makedirs("output", exist_ok=True)
     
     with open("output/script_data.json", "w", encoding="utf-8") as f:
