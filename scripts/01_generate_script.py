@@ -4,9 +4,9 @@ import json
 import os
 import sys
 import google.generativeai as genai
+from google.generativeai import types
 
 def generate_script(topic: str, duration_minutes: int) -> dict:
-    # API Key ကို ပိုမိုသေချာသော စနစ်ဖြင့် ချိတ်ဆက်ခြင်း
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         print("❌ Error: GEMINI_API_KEY environment variable is missing!")
@@ -42,16 +42,23 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
 
     print(f"🤖 Google Gemini API သို့ script တောင်းဆိုနေသည်... (topic: {topic})")
     
+    # 💡 404 Beta Error ကို ကျော်လွှားရန် Stable API Version (v1) သုံးဖို့ အတင်းသတ်မှတ်ခြင်း
     try:
-        # ပြင်ဆင်ပြီး - 404 Error ကို ကျော်လွှားရန် အသစ်ဆုံး Model ရွေးချယ်မှု ပုံစံအတိုင်း ပြောင်းလဲထားပါသည်
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(prompt)
+        model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash',
+            generation_config={"response_mime_type": "application/json"}
+        )
+        # API Client Options ကို သုံးပြီး API Version ကို v1 သို့ ပြောင်းလဲခြင်း
+        response = model.generate_content(
+            prompt,
+            client_options={"api_version": "v1"}
+        )
         response_text = response.text.strip()
     except Exception as api_error:
-        print(f"❌ Gemini API Call Error: {api_error}")
-        print("💡 နည်းလမ်းပြောင်းပြီး 'gemini-pro' ဖြင့် ထပ်မံကြိုးစားကြည့်နေသည်...")
+        print(f"❌ Gemini (v1) API Call Error: {api_error}")
+        print("💡 နည်းလမ်းပြောင်းပြီး Beta API ဖြင့် 'models/gemini-1.5-flash' ကို ထပ်မံကြိုးစားကြည့်နေသည်...")
         try:
-            model = genai.GenerativeModel('gemini-pro')
+            model = genai.GenerativeModel(model_name='models/gemini-1.5-flash')
             response = model.generate_content(prompt)
             response_text = response.text.strip()
         except Exception as e_fallback:
@@ -72,7 +79,7 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
         script_data = {
             "title": topic,
             "hook": f"{topic} အကြောင်း ယနေ့ လေ့လာကြပါစို့",
-            "sections": [{"heading": "အဓ比ကအကြောင်းအရာ", "content": response_text, "duration_seconds": duration_minutes * 60}],
+            "sections": [{"heading": "အဓိကအကြောင်းအရာ", "content": response_text, "duration_seconds": duration_minutes * 60}],
             "outro": "ကြည့်ရှုပေးသည့်အတွက် ကျေးဇူးတင်ပါသည်။ Like နှင့် Share လုပ်ပေးပါ။",
             "full_script": response_text,
             "thumbnail_text": topic[:20],
