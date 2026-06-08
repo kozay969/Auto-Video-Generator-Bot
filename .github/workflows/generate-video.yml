@@ -34,16 +34,21 @@ jobs:
       - name: 📦 Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install edge-tts Pillow requests python-telegram-bot==20.7
+          pip install \
+            anthropic \
+            gtts \
+            Pillow \
+            requests \
+            python-telegram-bot==20.7
 
-          # Install FFmpeg and Myanmar Fonts
+          # Install FFmpeg
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg imagemagick fonts-noto-core
+          sudo apt-get install -y ffmpeg imagemagick
 
           # Fix ImageMagick policy for video generation
           sudo sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml || true
 
-      - name: 🤖 Generate Script with Google Gemini (Direct Web API)
+      - name: 🤖 Generate Script with Claude
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
@@ -51,7 +56,7 @@ jobs:
             --topic "${{ github.event.inputs.topic }}" \
             --duration "${{ github.event.inputs.duration }}"
 
-      - name: 🔊 Generate Voice (Edge TTS Myanmar)
+      - name: 🔊 Generate Voice (gTTS Myanmar)
         run: |
           python scripts/02_text_to_speech.py
 
