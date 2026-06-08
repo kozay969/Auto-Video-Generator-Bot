@@ -1,4 +1,4 @@
-name: 🎬 auto-video-bot
+name: 🎬 Auto-Video-Generator-Bot
 
 on:
   workflow_dispatch:
