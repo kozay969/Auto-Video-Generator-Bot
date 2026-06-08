@@ -11,8 +11,8 @@ def generate_script(topic: str, duration_minutes: int) -> dict:
         print("❌ Error: GEMINI_API_KEY environment variable is missing!")
         sys.exit(1)
         
-    # ✅ 404 Error မတက်စေရန် API Version 'v1' ကို ဒီနေရာမှာ စနစ်တကျ သတ်မှတ်ထားပါတယ်
-    genai.configure(api_key=api_key, client_options={"api_version": "v1"})
+    # ရိုးရိုးရှင်းရှင်းပဲ ချိတ်ဆက်ပါမယ် (Error တက်စေမယ့် client_options တွေ အကုန်ဖြုတ်ထားပါတယ်)
+    genai.configure(api_key=api_key)
     
     words_per_minute = 120
     target_words = words_per_minute * duration_minutes
@@ -23,7 +23,7 @@ Topic: {topic}
 Video Duration: {duration_minutes} မိနစ်
 Target Word Count: {target_words} words (မြန်မာဘာသာ)
 
-အောက်ပါ format ဖြင့် JSON သာ return ပေးပါ (markdown ```json ... ``` မလိုပါ၊ pure JSON သာ ဖြစ်ရမည်):
+အောက်ပါ format အတိုင်း JSON ပုံစံဖြင့်သာ ပြန်လည်ဖြေကြားပေးပါ:
 {{
   "title": "ဗီဒီယိုခေါင်းစဉ်",
   "hook": "ပထမ 10 စက္ကန့်အတွင်း viewer ဆွဲဆောင်မည့် ဝါကျ 2-3 ကြောင်း",
@@ -42,7 +42,7 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
 
     print(f"🤖 Google Gemini API သို့ script တောင်းဆိုနေသည်... (topic: {topic})")
     
-    # 💡 Version 'v1' အောက်မှာ စိတ်ချရဆုံးဖြစ်တဲ့ Model နာမည်အမှန်ကို ခေါ်ယူခြင်း
+    # ပြင်ဆင်ပြီး - အငြင်းပွားဖွယ်မရှိ အလုပ်လုပ်မည့် စံပြပုံစံသို့ ပြောင်းလဲထားပါသည်
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(prompt)
@@ -58,17 +58,18 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
             print(f"❌ Fallback Error: {e_fallback}")
             sys.exit(1)
     
+    # AI ပြန်ပေးတဲ့စာသားထဲက JSON ကို စနစ်တကျ ရှာဖွေဖတ်ယူခြင်း
     try:
-        if response_text.startswith("```"):
-            lines = response_text.split("\n")
-            if lines[0].startswith("```json"):
-                response_text = "\n".join(lines[1:-1])
-            else:
-                response_text = "\n".join(lines[1:-1])
-                
+        # Markdown block (```json ... ```) ပါလာခဲ့ရင် ဖယ်ထုတ်ပစ်ရန်
+        if "```json" in response_text:
+            response_text = response_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in response_text:
+            response_text = response_text.split("```")[1].split("```")[0].strip()
+            
         script_data = json.loads(response_text)
     except Exception as e:
         print(f"⚠️ JSON parse error: {e}")
+        # အကယ်၍ JSON parse မရရင် ကွဲမသွားအောင် အလိုအလျောက် ပုံစံသွင်းပေးမည့် Fallback စနစ်
         script_data = {
             "title": topic,
             "hook": f"{topic} အကြောင်း ယနေ့ လေ့လာကြပါစို့",
