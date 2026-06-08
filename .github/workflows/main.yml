@@ -1,4 +1,4 @@
-name: 🎬 Auto-Video-Generator-Bot
+name: 🎬 Auto Video Generator
 
 on:
   workflow_dispatch:
@@ -35,22 +35,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install \
-            anthropic \
+            google-generativeai \
             gtts \
             Pillow \
             requests \
             python-telegram-bot==20.7
 
-          # Install FFmpeg
+          # Install FFmpeg and Myanmar Fonts
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg imagemagick
+          sudo apt-get install -y ffmpeg imagemagick fonts-noto-core
 
           # Fix ImageMagick policy for video generation
           sudo sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml || true
 
-      - name: 🤖 Generate Script with Claude
+      - name: 🤖 Generate Script with Google Gemini
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python scripts/01_generate_script.py \
             --topic "${{ github.event.inputs.topic }}" \
@@ -81,4 +81,3 @@ jobs:
             output/
             script.txt
           retention-days: 7
-          
