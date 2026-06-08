@@ -7,12 +7,12 @@ import argparse
 import json
 import os
 import sys
+import time
 import google.generativeai as genai
 
 def generate_script(topic: str, duration_minutes: int) -> dict:
     """Gemini API သုံးပြီး video script ထုတ်မည်"""
     
-    # Words per minute for Myanmar speech (slower than English)
     words_per_minute = 120
     target_words = words_per_minute * duration_minutes
     
@@ -50,18 +50,35 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
 
     print(f"🤖 Gemini API သို့ script တောင်းဆိုနေသည်... (topic: {topic})")
     
-    response = model.generate_content(
-        prompt,
-        generation_config=genai.types.GenerationConfig(
-            max_output_tokens=4096,
-        )
-    )
-    
-    response_text = response.text.strip()
-    
+    # Retry logic for rate limiting
+    max_retries = 3
+    retry_delays = [60, 90, 120]  # seconds
+
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=4096,
+                )
+            )
+            response_text = response.text.strip()
+            break  # success
+        except Exception as e:
+            err = str(e)
+            if "429" in err or "quota" in err.lower() or "rate" in err.lower():
+                if attempt < max_retries - 1:
+                    wait = retry_delays[attempt]
+                    print(f"⚠️ Rate limit ကျနေသည်။ {wait} စက္ကန့် စောင့်ပါမည်... (attempt {attempt+1}/{max_retries})")
+                    time.sleep(wait)
+                else:
+                    print(f"❌ Retry {max_retries} ကြိမ် မအောင်မြင်ပါ။")
+                    raise
+            else:
+                raise
+
     # JSON parse
     try:
-        # Clean up markdown fences if present
         if response_text.startswith("```"):
             lines = response_text.split("\n")
             response_text = "\n".join(lines[1:-1])
@@ -69,7 +86,6 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
         script_data = json.loads(response_text)
     except json.JSONDecodeError as e:
         print(f"⚠️ JSON parse error: {e}")
-        # Fallback: use raw text as script
         script_data = {
             "title": topic,
             "hook": f"{topic} အကြောင်း ယနေ့ လေ့လာကြပါစို့",
@@ -93,7 +109,6 @@ def main():
     
     script_data = generate_script(args.topic, args.duration)
     
-    # Save script data
     os.makedirs("output", exist_ok=True)
     
     with open("output/script_data.json", "w", encoding="utf-8") as f:
