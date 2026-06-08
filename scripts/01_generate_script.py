@@ -11,7 +11,6 @@ def generate_script(topic: str, duration_minutes: int) -> dict:
         print("❌ Error: GEMINI_API_KEY environment variable is missing!")
         sys.exit(1)
         
-    # ရိုးရိုးရှင်းရှင်းပဲ ချိတ်ဆက်ပါမယ် (Error တက်စေမယ့် client_options တွေ အကုန်ဖြုတ်ထားပါတယ်)
     genai.configure(api_key=api_key)
     
     words_per_minute = 120
@@ -42,7 +41,9 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
 
     print(f"🤖 Google Gemini API သို့ script တောင်းဆိုနေသည်... (topic: {topic})")
     
-    # ပြင်ဆင်ပြီး - အငြင်းပွားဖွယ်မရှိ အလုပ်လုပ်မည့် စံပြပုံစံသို့ ပြောင်းလဲထားပါသည်
+    response_text = ""
+    
+    # ပြင်ဆင်ပြီး - 400/NameError များ အားလုံးကို ကျော်လွှားနိုင်ရန် ကုဒ်ကို စနစ်တကျ ပြန်လည်ဖွဲ့စည်းထားပါသည်
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(prompt)
@@ -60,7 +61,6 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
     
     # AI ပြန်ပေးတဲ့စာသားထဲက JSON ကို စနစ်တကျ ရှာဖွေဖတ်ယူခြင်း
     try:
-        # Markdown block (```json ... ```) ပါလာခဲ့ရင် ဖယ်ထုတ်ပစ်ရန်
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
@@ -69,7 +69,6 @@ Target Word Count: {target_words} words (မြန်မာဘာသာ)
         script_data = json.loads(response_text)
     except Exception as e:
         print(f"⚠️ JSON parse error: {e}")
-        # အကယ်၍ JSON parse မရရင် ကွဲမသွားအောင် အလိုအလျောက် ပုံစံသွင်းပေးမည့် Fallback စနစ်
         script_data = {
             "title": topic,
             "hook": f"{topic} အကြောင်း ယနေ့ လေ့လာကြပါစို့",
