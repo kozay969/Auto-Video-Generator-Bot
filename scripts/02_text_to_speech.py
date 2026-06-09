@@ -1,108 +1,131 @@
 #!/usr/bin/env python3
 """
-Step 2: Microsoft Edge-TTS သုံးပြီး Myanmar ဘာသာဖြင့် သဘာဝကျကျ အသံသွင်းမည်
+Step 2: gTTS သုံးပြီး Myanmar ဘာသာဖြင့် အသံသွင်းမည်
 """
 
 import json
 import os
 import subprocess
-import asyncio
-import edge_tts
+from gtts import gTTS
 
-async def text_to_speech_myanmar(text: str, output_path: str) -> bool:
-    """Edge-TTS သုံးပြီး မြန်မာအသံ ထုတ်လုပ်မည်"""
+
+def text_to_speech_myanmar(text: str, output_path: str) -> bool:
+    """gTTS သုံးပြီး Myanmar TTS ထုတ်မည်"""
     try:
-        VOICE = "my-MM-ThihaNeural" 
-        communicate = edge_tts.Communicate(text, VOICE)
+        # Myanmar language code: 'my'
+        tts = gTTS(text=text, lang='my', slow=False)
         
+        # Save as mp3 first
         mp3_path = output_path.replace('.wav', '.mp3')
-        await communicate.save(mp3_path)
+        tts.save(mp3_path)
         
+        # Convert to WAV with proper settings for video
         subprocess.run([
             'ffmpeg', '-y',
             '-i', mp3_path,
-            '-ar', '44100',   
-            '-ac', '2',       
+            '-ar', '44100',   # Sample rate
+            '-ac', '2',       # Stereo
             '-acodec', 'pcm_s16le',
             output_path
         ], check=True, capture_output=True)
         
-        if os.path.exists(mp3_path):
-            os.remove(mp3_path)
-            
-        print(f"✅ TTS ထုတ်ပြီး (Edge-TTS): {output_path}")
+        # Cleanup mp3
+        os.remove(mp3_path)
+        
+        print(f"✅ TTS ထုတ်ပြီး: {output_path}")
         return True
+        
     except Exception as e:
-        print(f"❌ TTS Error: {e}")
-        return False
+        print(f"❌ TTS error: {e}")
+        # Try English fallback
+        try:
+            tts = gTTS(text=text, lang='en', slow=False)
+            mp3_path = output_path.replace('.wav', '.mp3')
+            tts.save(mp3_path)
+            subprocess.run([
+                'ffmpeg', '-y', '-i', mp3_path,
+                '-ar', '44100', '-ac', '2',
+                '-acodec', 'pcm_s16le', output_path
+            ], check=True, capture_output=True)
+            os.remove(mp3_path)
+            return True
+        except Exception as e2:
+            print(f"❌ Fallback TTS error: {e2}")
+            return False
 
-def split_text_into_chunks(text: str, max_chars: int = 300):
-    """စာသားများကို အပိုင်းအစလေးများ ဖြတ်ထုတ်ခြင်း"""
-    sentences = text.replace('။', '။\n').split('\n')
-    chunks = []
-    current_chunk = ""
+
+def split_text_for_tts(text: str, max_chars: int = 500) -> list[str]:
+    """Long text ကို chunks ခွဲမည် (gTTS limit ကြောင့်)"""
+    if len(text) <= max_chars:
+        return [text]
     
+    chunks = []
+    sentences = text.replace('။', '။|').replace('.', '.|').split('|')
+    
+    current_chunk = ""
     for sentence in sentences:
-        if len(current_chunk) + len(sentence) < max_chars:
+        if len(current_chunk) + len(sentence) <= max_chars:
             current_chunk += sentence
         else:
             if current_chunk:
                 chunks.append(current_chunk.strip())
             current_chunk = sentence
-            
+    
     if current_chunk:
         chunks.append(current_chunk.strip())
-    return chunks
+    
+    return chunks if chunks else [text[:max_chars]]
 
-async def main_async():
-    print("🔊 မြန်မာဘာသာဖြင့် အသံဖိုင် စတင်ဖန်တီးနေသည်...")
-    
-    with open("output/script_data.json", "r", encoding="utf-8") as f:
-        script_data = json.load(f)
-        
-    # 💡 ပြင်ဆင်ပြီး - KeyError 'full_script' မတက်စေရန် Safe-Key စနစ် သုံးထားပါသည်
-    full_script = script_data.get("full_script", "")
-    
-    # အကယ်၍ full_script မပါလာပါက အခြား key များမှ စာသားကို ရှာဖွေစုစည်းပေးမည့် စနစ်
-    if not full_script:
-        print("⚠️ Warning: 'full_script' key missing! စာသားများကို အလိုအလျောက် ပြန်လည်စုစည်းနေပါသည်...")
-        if "sections" in script_data and isinstance(script_data["sections"], list):
-            sections_text = []
-            for sec in script_data["sections"]:
-                if isinstance(sec, dict) and "content" in sec:
-                    sections_text.append(sec["content"])
-            full_script = " ".join(sections_text)
-        
-        # ဒါမှမရသေးရင် တခြားရှိတဲ့ စာသားတစ်ခုခုကို ယူသုံးခြင်း
-        if not full_script:
-            full_script = script_data.get("content", script_data.get("hook", script_data.get("title", "ဗီဒီယို စတင်ပါပြီ")))
-            
-    print(f"📝 ဖတ်ကြားမည့် စာသားအရှည်: {len(full_script)} လုံး")
+
+def main():
+    print("🔊 TTS ထုတ်နေသည်...")
     
     os.makedirs("output/audio", exist_ok=True)
-    chunks = split_text_into_chunks(full_script)
+    
+    # Load script
+    with open("output/script_data.json", "r", encoding="utf-8") as f:
+        script_data = json.load(f)
+    
+    full_script = script_data.get("full_script", "")
+    
+    if not full_script:
+        print("❌ Script မတွေ့ပါ!")
+        exit(1)
+    
+    print(f"📝 Script length: {len(full_script)} characters")
+    
+    # Split into chunks
+    chunks = split_text_for_tts(full_script, max_chars=400)
+    print(f"🔀 {len(chunks)} chunks ခွဲထားသည်")
     
     audio_files = []
+    
     for i, chunk in enumerate(chunks):
         if not chunk.strip():
             continue
-        chunk_path = f"output/audio/chunk_{i:03d}.wav"
-        print(f"  🎙️ Audio Chunk {i+1}/{len(chunks)} ကို ထုတ်နေသည်...")
-        
-        success = await text_to_speech_myanmar(chunk, chunk_path)
-        if success:
-            audio_files.append(chunk_path)
             
-    if not audio_files:
-        print("❌ ပြဿနာဖြစ်ပွား၍ အသံဖိုင် မထုတ်နိုင်ခဲ့ပါ!")
-        return
+        chunk_path = f"output/audio/chunk_{i:03d}.wav"
+        print(f"  🎙️ Chunk {i+1}/{len(chunks)} - {len(chunk)} chars")
         
-    print("🔗 အသံဖိုင်များအားလုံး ပေါင်းစပ်နေသည်...")
+        if text_to_speech_myanmar(chunk, chunk_path):
+            audio_files.append(chunk_path)
+        else:
+            print(f"  ⚠️ Chunk {i} failed, skipping...")
+    
+    if not audio_files:
+        print("❌ Audio files မထုတ်နိုင်ပါ!")
+        exit(1)
+    
+    # Merge all audio chunks
+    print("🔗 Audio chunks များ ပေါင်းစပ်နေသည်...")
+    
+    # Create concat file
     concat_file = "output/audio/concat_list.txt"
     with open(concat_file, "w") as f:
         for audio_file in audio_files:
             f.write(f"file '{os.path.abspath(audio_file)}'\n")
-            
+    
+    # Merge with FFmpeg
     merged_audio = "output/audio/full_audio.wav"
     subprocess.run([
         'ffmpeg', '-y',
@@ -114,22 +137,22 @@ async def main_async():
         merged_audio
     ], check=True, capture_output=True)
     
+    # Get duration
     result = subprocess.run([
         'ffprobe', '-v', 'quiet',
         '-print_format', 'json',
         '-show_format', merged_audio
-    ], check=True, capture_output=True, text=True)
+    ], capture_output=True, text=True)
     
     probe_data = json.loads(result.stdout)
-    duration = float(probe_data["format"]["duration"])
+    duration = float(probe_data['format']['duration'])
     
+    print(f"✅ Audio ထုတ်ပြီး: {duration:.1f} seconds")
+    
+    # Save audio info
     with open("output/audio_info.json", "w") as f:
-        json.dump({"path": merged_audio, "duration": duration}, f)
-        
-    print(f"✅ အသံဖိုင် အားလုံးပေါင်းပြီးပါပြီ။ ကြာချိန်: {duration:.1f} စက္ကန့်")
+        json.dump({"duration": duration, "path": merged_audio}, f)
 
-def main():
-    asyncio.run(main_async())
 
 if __name__ == "__main__":
     main()
