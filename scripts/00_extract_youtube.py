@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import time
 from openai import OpenAI
 
 
@@ -30,7 +31,6 @@ def get_transcript_via_api(video_id: str) -> str:
         from youtube_transcript_api import YouTubeTranscriptApi
         from youtube_transcript_api.formatters import TextFormatter
 
-        # Try multiple languages
         langs_to_try = ['my', 'en', 'en-US', 'en-GB']
 
         transcript = None
@@ -45,15 +45,19 @@ def get_transcript_via_api(video_id: str) -> str:
             except Exception:
                 continue
 
-        # Auto-generated fallback
+        # Auto-generated fallback - try ALL available transcripts
         if not transcript:
             try:
                 transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-                for t in transcript_list:
-                    transcript = t.fetch()
-                    used_lang = t.language_code
+                all_transcripts = list(transcript_list)
+                if all_transcripts:
+                    # Prefer non-auto-generated first
+                    manual = [t for t in all_transcripts if not t.is_generated]
+                    auto = [t for t in all_transcripts if t.is_generated]
+                    chosen = (manual or auto)[0]
+                    transcript = chosen.fetch()
+                    used_lang = chosen.language_code
                     print(f"  ✅ Auto transcript ရပြီ ({used_lang})")
-                    break
             except Exception as e:
                 print(f"  ⚠️ Transcript API error: {e}")
                 return ""
@@ -69,41 +73,79 @@ def get_transcript_via_api(video_id: str) -> str:
     except ImportError:
         print("  ⚠️ youtube-transcript-api မရှိပါ")
         return ""
-
-
-def get_video_metadata(video_id: str) -> dict:
-    """yt-dlp သုံးပြီး video metadata ထုတ်မည်"""
-    try:
-        import subprocess
-        result = subprocess.run([
-            'yt-dlp',
-            '--dump-json',
-            '--no-playlist',
-            '--skip-download',
-            f'https://www.youtube.com/watch?v={video_id}'
-        ], capture_output=True, text=True, timeout=60)
-
-        if result.returncode == 0:
-            data = json.loads(result.stdout)
-            return {
-                'title': data.get('title', ''),
-                'description': data.get('description', '')[:1000],  # First 1000 chars
-                'duration': data.get('duration', 0),
-                'channel': data.get('uploader', ''),
-                'view_count': data.get('view_count', 0),
-                'tags': data.get('tags', [])[:10],
-            }
     except Exception as e:
-        print(f"  ⚠️ Metadata error: {e}")
+        print(f"  ⚠️ Transcript unexpected error: {e}")
+        return ""
 
+
+def get_video_metadata(video_id: str, retries: int = 3) -> dict:
+    """yt-dlp သုံးပြီး video metadata ထုတ်မည် (retry + bot-detection bypass)"""
+    import subprocess
+
+    base_cmd = [
+        'yt-dlp',
+        '--dump-json',
+        '--no-playlist',
+        '--skip-download',
+        '--no-warnings',
+        # Browser impersonation to bypass bot detection
+        '--user-agent',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        '--add-header', 'Accept-Language:en-US,en;q=0.9',
+        '--extractor-args', 'youtube:player_client=web',
+        f'https://www.youtube.com/watch?v={video_id}'
+    ]
+
+    for attempt in range(1, retries + 1):
+        try:
+            print(f"  🔄 Metadata attempt {attempt}/{retries}...")
+            result = subprocess.run(
+                base_cmd,
+                capture_output=True,
+                text=True,
+                timeout=90
+            )
+
+            if result.returncode == 0 and result.stdout.strip():
+                data = json.loads(result.stdout)
+                meta = {
+                    'title': data.get('title', ''),
+                    'description': data.get('description', '')[:1000],
+                    'duration': data.get('duration', 0),
+                    'channel': data.get('uploader', ''),
+                    'view_count': data.get('view_count', 0),
+                    'tags': data.get('tags', [])[:10],
+                }
+                print(f"  ✅ Metadata ရပြီ: {meta['title'][:60]}")
+                return meta
+            else:
+                err = result.stderr.strip()[:200] if result.stderr else "no output"
+                print(f"  ⚠️ yt-dlp attempt {attempt} failed: {err}")
+
+        except subprocess.TimeoutExpired:
+            print(f"  ⚠️ yt-dlp attempt {attempt} timed out")
+        except Exception as e:
+            print(f"  ⚠️ Metadata error attempt {attempt}: {e}")
+
+        if attempt < retries:
+            time.sleep(3 * attempt)  # exponential backoff
+
+    print("  ❌ All metadata attempts failed — continuing with empty metadata")
     return {'title': '', 'description': '', 'duration': 0, 'channel': '', 'tags': []}
+
+
+def build_context_from_url(youtube_url: str, video_id: str) -> str:
+    """Transcript/metadata မရရင် URL မှ basic context ဆောက်မည်"""
+    return f"YouTube Video ID: {video_id}\nSource URL: {youtube_url}"
 
 
 def summarize_and_translate(
     transcript: str,
     metadata: dict,
     youtube_url: str,
-    duration_minutes: int
+    duration_minutes: int,
+    video_id: str = ""
 ) -> dict:
     """OpenRouter API သုံးပြီး transcript ကို Myanmar script အဖြစ် ပြန်ဆိုပြီး summarize မည်"""
 
@@ -115,11 +157,11 @@ def summarize_and_translate(
     words_per_minute = 120
     target_words = words_per_minute * duration_minutes
 
-    video_title = metadata.get('title', 'YouTube Video')
+    video_title = metadata.get('title', '')
     description = metadata.get('description', '')
     channel = metadata.get('channel', '')
 
-    # Build context from available info
+    # Build context — graceful fallback if everything is empty
     context_parts = []
     if video_title:
         context_parts.append(f"Video Title: {video_title}")
@@ -128,13 +170,22 @@ def summarize_and_translate(
     if description:
         context_parts.append(f"Description: {description[:500]}")
     if transcript:
-        # Limit transcript to avoid token overflow
         context_parts.append(f"Transcript:\n{transcript[:6000]}")
 
-    context = "\n\n".join(context_parts)
+    # ── FALLBACK: if nothing worked, use URL/ID as minimal context ──
+    if not context_parts:
+        print("  ⚠️ Transcript/metadata မရပါ — URL မှ script ထုတ်မည်")
+        fallback_ctx = build_context_from_url(youtube_url, video_id)
+        context_parts.append(fallback_ctx)
+        # Let LLM know it has no source material
+        context_parts.append(
+            "Note: No transcript or metadata was available for this video. "
+            "Please generate a creative and informative Myanmar script based on "
+            "what can be inferred from the URL/ID, and make it engaging for viewers."
+        )
+        video_title = video_title or f"YouTube Video ({video_id})"
 
-    if not context.strip():
-        raise ValueError("Video မှ content ထုတ်မရပါ - transcript နှင့် metadata မတွေ့ပါ")
+    context = "\n\n".join(context_parts)
 
     prompt = f"""သင်သည် မြန်မာဘာသာဖြင့် ဗီဒီယိုကြည့်ရှုသူများအတွက် engaging content ရေးသားသော expert တစ်ဦးဖြစ်သည်။
 
@@ -181,13 +232,19 @@ JSON format သာ return ပေးပါ (markdown မလိုပါ):
 
     response_text = message.choices[0].message.content.strip()
 
-    # JSON parse
+    # JSON parse — strip markdown fences if present
     try:
+        # Handle ```json ... ``` or ``` ... ```
         if response_text.startswith("```"):
             lines = response_text.split("\n")
-            response_text = "\n".join(lines[1:-1])
+            # Remove first and last fence lines
+            inner = lines[1:] if lines[-1].strip() == "```" else lines[1:]
+            if inner and inner[-1].strip() == "```":
+                inner = inner[:-1]
+            response_text = "\n".join(inner)
 
         script_data = json.loads(response_text)
+
     except json.JSONDecodeError as e:
         print(f"⚠️ JSON parse error: {e}")
         script_data = {
@@ -222,31 +279,33 @@ def main():
         print(f"❌ {e}")
         sys.exit(1)
 
-    # Get metadata
+    # Get metadata (with retry + bot-bypass)
     print("📋 Video metadata ထုတ်နေသည်...")
     metadata = get_video_metadata(video_id)
     if metadata.get('title'):
         print(f"  Title: {metadata['title']}")
         print(f"  Channel: {metadata.get('channel', 'N/A')}")
-        print(f"  Duration: {metadata.get('duration', 0)//60}:{metadata.get('duration', 0)%60:02d}")
+        dur = metadata.get('duration', 0)
+        print(f"  Duration: {dur//60}:{dur%60:02d}")
 
     # Get transcript
     print("📝 Transcript ထုတ်နေသည်...")
     transcript = get_transcript_via_api(video_id)
 
     if not transcript:
-        print("  ⚠️ Transcript မရ၊ metadata မှ script ထုတ်မည်...")
+        print("  ⚠️ Transcript မရ — metadata မှ script ဆက်ထုတ်မည်")
 
-    # Summarize & translate to Myanmar
+    # Summarize & translate
     print(f"🌏 Myanmar script ပြောင်းနေသည် ({args.duration} မိနစ်)...")
     script_data = summarize_and_translate(
         transcript=transcript,
         metadata=metadata,
         youtube_url=args.url,
-        duration_minutes=args.duration
+        duration_minutes=args.duration,
+        video_id=video_id
     )
 
-    # Save
+    # Save outputs
     os.makedirs("output", exist_ok=True)
 
     with open("output/script_data.json", "w", encoding="utf-8") as f:
@@ -255,7 +314,6 @@ def main():
     with open("script.txt", "w", encoding="utf-8") as f:
         f.write(script_data.get("full_script", ""))
 
-    # Save YouTube source info separately
     with open("output/source_info.json", "w", encoding="utf-8") as f:
         json.dump({
             "url": args.url,
@@ -263,7 +321,8 @@ def main():
             "original_title": metadata.get('title', ''),
             "channel": metadata.get('channel', ''),
             "transcript_length": len(transcript),
-            "had_transcript": bool(transcript)
+            "had_transcript": bool(transcript),
+            "had_metadata": bool(metadata.get('title'))
         }, f, ensure_ascii=False, indent=2)
 
     print(f"✅ Script ပြောင်းပြီး!")
@@ -275,4 +334,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-  
+    
