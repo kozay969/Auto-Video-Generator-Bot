@@ -1,14 +1,14 @@
-name: 🎬 Auto Video Generator
+name: 🎬 Auto Video Generator (YouTube → Myanmar)
 
 on:
   workflow_dispatch:
     inputs:
-      topic:
-        description: '📝 Video Topic (ဥပမာ - Python programming အကြောင်း)'
+      youtube_url:
+        description: '🔗 YouTube Video URL'
         required: true
         type: string
       duration:
-        description: '⏱️ Duration (minutes)'
+        description: '⏱️ Output Duration (minutes)'
         required: false
         default: '3'
         type: choice
@@ -20,7 +20,7 @@ on:
 jobs:
   generate-video:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: 📥 Checkout Repository
@@ -40,24 +40,26 @@ jobs:
             edge-tts \
             Pillow \
             requests \
-            python-telegram-bot==20.7
+            python-telegram-bot==20.7 \
+            youtube-transcript-api \
+            yt-dlp
 
           # Install FFmpeg
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg imagemagick
 
-          # Fix ImageMagick policy for video generation
+          # Fix ImageMagick policy
           sudo sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml || true
 
-      - name: 🤖 Generate Script with OpenRouter
+      - name: 🎥 Extract YouTube Transcript & Summarize
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
-          python scripts/01_generate_script.py \
-            --topic "${{ github.event.inputs.topic }}" \
+          python scripts/00_extract_youtube.py \
+            --url "${{ github.event.inputs.youtube_url }}" \
             --duration "${{ github.event.inputs.duration }}"
 
-      - name: 🔊 Generate Voice (gTTS Myanmar)
+      - name: 🔊 Generate Myanmar Voice (gTTS)
         run: |
           python scripts/02_text_to_speech.py
 
@@ -71,7 +73,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python scripts/04_send_telegram.py \
-            --topic "${{ github.event.inputs.topic }}"
+            --topic "${{ github.event.inputs.youtube_url }}"
 
       - name: 💾 Upload Artifacts (Backup)
         uses: actions/upload-artifact@v4
