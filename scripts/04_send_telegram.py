@@ -75,19 +75,27 @@ def format_caption(script_data: dict, topic: str, video_info: dict) -> str:
     title = script_data.get("title", topic)
     tags = script_data.get("tags", [])
     duration = video_info.get("duration", 0)
-    
+    source_url = script_data.get("source_url", "")
+    source_title = script_data.get("source_title", "")
+
     # Format tags
     tag_str = " ".join([f"#{t.replace(' ', '_')}" for t in tags[:5]])
-    
-    caption = f"""🎬 <b>{title}</b>
 
+    # Source line
+    source_line = ""
+    if source_url:
+        src_label = source_title if source_title else source_url
+        source_line = f"\n🔗 Source: <a href=\"{source_url}\">{src_label[:60]}</a>"
+
+    caption = f"""🎬 <b>{title}</b>
+{source_line}
 ⏱ Duration: {int(duration // 60)}:{int(duration % 60):02d} minutes
-🤖 Auto-generated with AI
+🤖 AI-generated Myanmar summary
 
 ━━━━━━━━━━━━━━━
 {tag_str}
 #AutoVideo #MyanmarContent #AI"""
-    
+
     return caption
 
 
@@ -168,4 +176,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-          
+    
